@@ -27,7 +27,9 @@ Doanh nghiệp startup LLM *NimbusAI* đang đối mặt với sự bùng nổ c
 
 ## 2. Phân Tích Chuyên Sâu 4 Đòn Bẩy Tiết Kiệm (Savings Levers Breakdown)
 
-Biểu đồ Waterfall được kết xuất tại `outputs/savings.png` phân rã tổng số tiền tiết kiệm **$12,583 / tháng** thành 4 nhóm giải pháp độc lập:
+Biểu đồ Waterfall phân rã tổng số tiền tiết kiệm **$12,583 / tháng** thành 4 nhóm giải pháp độc lập:
+
+![Biểu đồ Waterfall 4 Đòn Bẩy FinOps](savings.png)
 
 ```
 [Baseline: $27,133]
@@ -100,6 +102,10 @@ Chúng tôi đã triển khai hoàn thiện và viết unit test cho **4 phần 
 
 ### 4.1. Extension 1: Nâng cấp Ma trận Mua sắm Thông minh (`recommend_tier()`)
 - **Vị trí code:** `finops/pricing.py` & `missions/m3_purchasing.py`
+- **Ảnh chụp minh chứng thực thi:**
+  
+  ![Extension 1: Ma trận Purchasing & Interruption Rates](Extension1.png)
+
 - **Cải tiến:** 
   1. Tích hợp ma trận tỷ lệ gián đoạn thực nghiệm theo GPU (`GPU_INTERRUPT_RATES`): H100 (3%), H200 (3%), A100 (5%), L4 (6%), A10G (8%).
   2. Đánh giá thời hạn công việc (`job_days`): Với job ngắn hạn (< 7 ngày) không gián đoạn, ưu tiên On-Demand để tránh rủi ro khóa cam kết 3 năm (Commitment lock-in).
@@ -108,11 +114,15 @@ Chúng tôi đã triển khai hoàn thiện và viết unit test cho **4 phần 
 
 ### 4.2. Extension 3: Kinh tế học của Prompt Caching (`cache_is_worth_it()`)
 - **Vị trí code:** `finops/pricing.py` & `missions/m2_inference_levers.py`
+- **Ảnh chụp minh chứng thực thi:**
+
+  ![Extension 3 & 4: Cache Economics & Reasoning Budget](Extention3-4.png)
+
 - **Công thức xác định điểm hòa vốn:**
   $$\text{Savings per Read} = P_{\text{in}} \times (1 - \text{Read Discount}) = 3.00 \times 0.90 = \$2.70 / 1\text{M}$$
   $$N_{\text{breakeven}} = \frac{\text{Write Cost} + \text{Storage Cost}}{\text{Savings per Read}} = \frac{3.00 + 0.00}{2.70} \approx 1.11 \text{ lần đọc}$$
 - **Kết quả kiểm toán trên dữ liệu thực tế (`token_usage.csv`):** 
-  Số lần tái sử dụng trung bình của các prefix đạt $N_{\text{actual}} \approx 5.0 \text{ reads} \gg 1.11$, chứng minh Prompt Caching đem lại lợi ích kinh tế ròng vượt trội và được kích hoạt an toàn (`cache_viable = True`).
+  Số lần tái sử dụng trung bình của các prefix đạt $N_{\text{actual}} \approx 480.0 \text{ reads} \gg 1.11$, chứng minh Prompt Caching đem lại lợi ích kinh tế ròng vượt trội và được kích hoạt an toàn (`cache_viable = True`).
 
 ### 4.3. Extension 4: Phân Tích & Quản Trị Ngân Sách Suy Luận Sâu (Reasoning Budget)
 - **Vị trí code:** `missions/m2_inference_levers.py`
@@ -124,6 +134,10 @@ Chúng tôi đã triển khai hoàn thiện và viết unit test cho **4 phần 
 
 ### 4.4. Extension 5: Lập Lịch Nhận Thức Carbon theo Vùng (Carbon-Aware Scheduling)
 - **Vị trí code:** `missions/ext_carbon_scheduling.py`
+- **Ảnh chụp minh chứng thực thi:**
+
+  ![Extension 5: Lập lịch Carbon-Aware Scheduling](Extention5.png)
+
 - **Phân tích 5 Cloud Regions:**
 
 | Khu Vực (Region) | Cường Độ Carbon (`gCO2/kWh`) | Đơn Giá Điện (`$/kWh`) | Phát Thải CO2 (kg/tháng) | Chi Phí Điện Năng ($/tháng) |
@@ -140,6 +154,10 @@ Chúng tôi đã triển khai hoàn thiện và viết unit test cho **4 phần 
 - **Nhận định Trade-off Vận hành:** 
   * Các job training và batch evaluation không bị ràng buộc bởi độ trễ người dùng (latency-insensitive) nên phải lập lịch 100% tại `europe-north1` hoặc `us-east-wa`.
   * Real-time inference chat cần triển khai đa vùng (multi-region edge) gần người dùng để đảm bảo Time-to-First-Token (TTFT) < 200ms.
+
+### 4.5. Minh Chứng Unit Tests Mở Rộng
+
+![Unit Tests Mở Rộng](Unittest.png)
 
 ---
 
