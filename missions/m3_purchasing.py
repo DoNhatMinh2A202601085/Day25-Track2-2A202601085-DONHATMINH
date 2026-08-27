@@ -26,9 +26,11 @@ def run(verbose: bool = True) -> dict:
         od = num(c["on_demand_hr"])
         on_demand_cost = gpu_hours * od
 
-        tier = pricing.recommend_tier(hpd, interruptible)
+        jdays = num(j.get("days", DAYS))
+        tier = pricing.recommend_tier(hpd, interruptible, gpu_type=gtype, job_days=jdays)
         if tier == "spot":
-            sim = pricing.spot_checkpoint_cost(gpu_hours, num(c["spot_hr"]), od)
+            irate = pricing.GPU_INTERRUPT_RATES.get(gtype, 0.05)
+            sim = pricing.spot_checkpoint_cost(gpu_hours, num(c["spot_hr"]), od, interrupt_rate=irate)
             opt_cost = sim["spot_cost"]
         elif tier == "reserved":
             opt_cost = gpu_hours * num(c["reserved_3yr_hr"])
@@ -38,7 +40,8 @@ def run(verbose: bool = True) -> dict:
         on_demand_monthly += on_demand_cost
         optimized_monthly += opt_cost
         recs.append({"job_id": j["job_id"], "gpu_type": gtype, "tier": tier,
-                     "on_demand": round(on_demand_cost), "optimized": round(opt_cost)})
+                     "on_demand": round(on_demand_cost), "optimized": round(opt_cost),
+                     "interrupt_rate": pricing.GPU_INTERRUPT_RATES.get(gtype, 0.05)})
 
     savings = on_demand_monthly - optimized_monthly
     savings_pct = savings / on_demand_monthly * 100 if on_demand_monthly else 0.0
@@ -46,9 +49,10 @@ def run(verbose: bool = True) -> dict:
     if verbose:
         print("== M3 Purchasing Strategy ==")
         print(f"break-even utilization @ 45% reserved discount = {pricing.break_even_utilization(0.45):.0%}")
-        print(f"{'job':18}{'gpu':7}{'tier':11}{'on-demand':>12}{'optimized':>12}")
+        print(f"{'job':18}{'gpu':7}{'tier':11}{'int_rate':>10}{'on-demand':>12}{'optimized':>12}")
         for r in recs:
-            print(f"{r['job_id']:18}{r['gpu_type']:7}{r['tier']:11}${r['on_demand']:>11,}${r['optimized']:>11,}")
+            ir_str = f"{r['interrupt_rate']:.0%}" if r["tier"] == "spot" else "n/a"
+            print(f"{r['job_id']:18}{r['gpu_type']:7}{r['tier']:11}{ir_str:>10}${r['on_demand']:>11,}${r['optimized']:>11,}")
         print(f"\nmonthly: on-demand ${on_demand_monthly:,.0f} -> optimized ${optimized_monthly:,.0f}  ({savings_pct:.1f}% saved)")
 
     return {"recommendations": recs, "on_demand_monthly": round(on_demand_monthly),

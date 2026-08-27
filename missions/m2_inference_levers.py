@@ -32,6 +32,24 @@ def run(verbose: bool = True) -> dict:
     opt_pm = pricing.dollars_per_million(opt_cost, total_tokens)
     savings_pct = (1 - opt_cost / base_cost) * 100 if base_cost else 0.0
 
+    # --- Extension 3 & 4 Analysis ---
+    # Cache economics evaluation (average read multiplier on cached input)
+    cached_requests = [r for r in rows if int(num(r["cached_input_tokens"])) > 0]
+    avg_cache_reads = len(cached_requests) / max(1, len(set(r.get("project", "") for r in cached_requests)))
+    cache_viable = pricing.cache_is_worth_it(avg_cache_reads=avg_cache_reads, read_discount=0.10)
+
+    # Reasoning traffic breakdown
+    reasoning_cost = sum(
+        pricing.request_cost(
+            int(num(r["input_tokens"])), int(num(r["output_tokens"])),
+            MODEL_PRICES[r["route_tier"]][0], MODEL_PRICES[r["route_tier"]][1],
+            cached_in=int(num(r["cached_input_tokens"])),
+            batch=bool(int(num(r["is_batch"])))
+        )
+        for r in rows if bool(int(num(r.get("is_reasoning", 0))))
+    )
+    reasoning_reqs = sum(1 for r in rows if bool(int(num(r.get("is_reasoning", 0)))))
+
     if verbose:
         print("== M2 Inference Cost Levers ==")
         print(f"requests={len(rows)}  tokens={total_tokens:,}")
@@ -39,11 +57,16 @@ def run(verbose: bool = True) -> dict:
         print(f"optimized : ${opt_cost:,.2f}/day   ${opt_pm:.3f}/1M-token")
         print(f"savings   : {savings_pct:.1f}%  (cascade + caching + batch)")
         print(f"discount stack (batch + 100% cache): {pricing.discount_stack(batch=True, cache_hit_frac=1.0):.3f} of naive")
+        print(f"\n[Extension 3] Cache viable (avg reads={avg_cache_reads:.1f} >= breakeven ~1.11): {cache_viable}")
+        print(f"[Extension 4] Reasoning traffic: {reasoning_reqs}/{len(rows)} requests ({reasoning_reqs/len(rows):.1%}), cost=${reasoning_cost:.2f}/day ({reasoning_cost/opt_cost:.1%} of opt)")
 
     return {
         "baseline_daily": round(base_cost, 2), "optimized_daily": round(opt_cost, 2),
         "baseline_per_m": round(base_pm, 3), "optimized_per_m": round(opt_pm, 3),
         "savings_pct": round(savings_pct, 1), "total_tokens": total_tokens,
+        "reasoning_cost_daily": round(reasoning_cost, 2),
+        "reasoning_reqs": reasoning_reqs,
+        "cache_viable": cache_viable,
     }
 
 

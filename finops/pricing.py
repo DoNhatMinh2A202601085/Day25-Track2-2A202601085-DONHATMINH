@@ -60,18 +60,63 @@ def break_even_utilization(discount_frac: float) -> float:
     return max(0.0, min(1.0, 1.0 - discount_frac))
 
 
-def recommend_tier(hours_per_day: float, interruptible: bool, reserved_discount: float = 0.45) -> str:
-    """Pick a purchasing tier from a workload's duty cycle + interruptibility.
+# Interruption risk per GPU type (illustrative empirical snapshot)
+GPU_INTERRUPT_RATES = {
+    "H100": 0.03,    # High availability AI clusters
+    "H200": 0.03,
+    "A100": 0.05,
+    "A10G": 0.08,    # Higher preemption volatility
+    "L4": 0.06,
+    "B200": 0.04,
+    "MI300X": 0.05,
+}
 
-    DOCUMENTED simple policy (instructor extension point — swap in your own):
-      - interruptible & not 24/7  -> 'spot'      (checkpoint and ride the discount)
-      - duty cycle >= break-even  -> 'reserved'  (steady, high utilization)
-      - otherwise                 -> 'on_demand' (spiky / low duty)
+
+def cache_is_worth_it(
+    avg_cache_reads: float,
+    write_cost_per_m: float = 3.0,
+    read_discount: float = 0.10,
+    base_input_price_per_m: float = 3.0,
+    storage_cost_per_m: float = 0.0,
+) -> bool:
+    """Evaluate whether prompt caching provides net savings given read frequency.
+
+    Prompt caching saves money when total read savings exceed write and storage overhead:
+      Savings = avg_cache_reads * (base_input_price_per_m * (1 - read_discount))
+      Cost = write_cost_per_m + storage_cost_per_m
+    Break-even reads threshold = Cost / (base_input_price_per_m * (1 - read_discount)).
+    """
+    savings_per_read = base_input_price_per_m * (1.0 - read_discount)
+    if savings_per_read <= 0:
+        return False
+    breakeven_reads = (write_cost_per_m + storage_cost_per_m) / savings_per_read
+    return avg_cache_reads >= breakeven_reads
+
+
+def recommend_tier(
+    hours_per_day: float,
+    interruptible: bool,
+    reserved_discount: float = 0.45,
+    gpu_type: str | None = None,
+    job_days: float | None = None,
+    interrupt_rate: float | None = None,
+) -> str:
+    """Pick a purchasing tier from duty cycle, interruptibility, GPU type, and job duration.
+
+    Policy matrix:
+      - interruptible & checkpointable -> 'spot' (with GPU-specific preemption risk evaluation)
+      - non-interruptible, short duration (<7d) -> 'on_demand' (avoids long lock-in)
+      - duty cycle >= break-even (>=55% for 45% discount) -> 'reserved'
+      - otherwise -> 'on_demand' (spiky / low duty cycle)
     """
     duty = max(0.0, hours_per_day) / 24.0
     be = break_even_utilization(reserved_discount)
-    if interruptible and hours_per_day < 24:
-        return "spot"
+    if interruptible:
+        rate = interrupt_rate if interrupt_rate is not None else GPU_INTERRUPT_RATES.get(gpu_type or "", 0.05)
+        if hours_per_day < 24 or rate <= 0.05:
+            return "spot"
+    if job_days is not None and job_days < 7 and duty < 0.90:
+        return "on_demand"
     if duty >= be:
         return "reserved"
     return "on_demand"
